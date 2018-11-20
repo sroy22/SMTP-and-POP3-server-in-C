@@ -1,0 +1,1 @@
+/usr/bin/cc -g -Wall -std=gnu99 -g   CMakeFiles/mysmtpd.dir/mailuser.c.o CMakeFiles/mysmtpd.dir/mysmtpd.c.o CMakeFiles/mysmtpd.dir/netbuffer.c.o CMakeFiles/mysmtpd.dir/server.c.o  -o mysmtpd 

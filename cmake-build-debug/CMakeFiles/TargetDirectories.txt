@@ -1,0 +1,4 @@
+/mnt/c/317/a3_c0p2b_k5m0b/cmake-build-debug/CMakeFiles/rebuild_cache.dir
+/mnt/c/317/a3_c0p2b_k5m0b/cmake-build-debug/CMakeFiles/edit_cache.dir
+/mnt/c/317/a3_c0p2b_k5m0b/cmake-build-debug/CMakeFiles/mysmtpd.dir
+/mnt/c/317/a3_c0p2b_k5m0b/cmake-build-debug/CMakeFiles/mypopd.dir
