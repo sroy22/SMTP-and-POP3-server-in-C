@@ -113,8 +113,17 @@ void handle_client(int fd) {
                 printf("this is rec count %d",recCount);
             }
             else if(strncmp(readBuffer,"data",4)==0)
-            {
-                printf("This is data");
+            {   char *data;
+                data=(char *) malloc(strlen(readBuffer));
+                char *temp;
+                temp=(char *) malloc(strlen(readBuffer));
+                while(strlen(readBuffer)==1 && readBuffer[0]=='.')
+                {   strcpy(temp,data);
+                    strcat(temp,readBuffer);
+                    data=(char * )realloc(data,2*strlen(temp));
+                    strcpy(data,temp);
+                }
+                data[strlen(data)-1]='\0';
             }
             else if(strncmp(readBuffer,"noop",4)==0)
             {
