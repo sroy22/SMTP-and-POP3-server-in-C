@@ -27,35 +27,6 @@ int main(int argc, char *argv[]) {
 }
 
 void handle_client(int fd) {
-#include "netbuffer.h"
-#include "mailuser.h"
-#include "server.h"
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/utsname.h>
-#include <ctype.h>
-#include <string.h>
-#include <sys/socket.h>
-
-#define MAX_LINE_LENGTH 1024
-
-    static void handle_client(int fd);
-
-    int main(int argc, char *argv[]) {
-
-        if (argc != 2) {
-            fprintf(stderr, "Invalid arguments. Expected: %s <port>\n", argv[0]);
-            return 1;
-        }
-
-        run_server(argv[1], handle_client);
-
-        return 0;
-    }
-
-    void handle_client(int fd) {
         char rec[100][100];
         int recCount=0;
 
@@ -108,7 +79,7 @@ void handle_client(int fd) {
                 }
                 mail[k]='\0';
                 strcpy(rec[recCount],mail); // putting in 2D char array for multiple ids
-                recCount++
+                recCount++;
                 printf("mail is %s",mail);
                 printf("this is rec count %d",recCount);
             }
@@ -144,4 +115,4 @@ void handle_client(int fd) {
         // TODO To be implemented
     }
 
-}
+
