@@ -1,1 +1,0 @@
-/usr/bin/cc -g -Wall -std=gnu99 -g   CMakeFiles/mypopd.dir/mailuser.c.o CMakeFiles/mypopd.dir/mypopd.c.o CMakeFiles/mypopd.dir/netbuffer.c.o CMakeFiles/mypopd.dir/server.c.o  -o mypopd 
