@@ -15,6 +15,7 @@
 
 static void handle_client(int fd);
 static void readEmailAddressFromBuffer(char* emailAddress, char* readBuffer);
+static char* readData(int fd);
 
 int main(int argc, char *argv[]) {
 
@@ -29,6 +30,7 @@ int main(int argc, char *argv[]) {
 }
 
 void handle_client(int fd) {
+    // TODO restart this list when user tries to send new email
     user_list_t recipients = create_user_list();
 
     while (true) {
@@ -65,19 +67,11 @@ void handle_client(int fd) {
             printf("recipient is %s\n", emailAddress);
         } // if rcpt
         else if (strncmp(readBuffer, "data", 4) == 0) {
-            char *data;
-            data = (char *) malloc(strlen(readBuffer));
-            char *temp;
-            temp = (char *) malloc(strlen(readBuffer));
+            strcpy(bufOut, "354 Send message content; end with <CRLF>.<CRLF>\r\n");
+            send(fd, bufOut, strlen(bufOut), 0); //sending client message
 
-            // read until '.'
-            while (!(strlen(readBuffer) == 1 && readBuffer[0] == '.')) {
-                strcpy(temp, data);
-                strcat(temp, readBuffer);
-                data = (char *) realloc(data, 2 * strlen(temp));
-                strcpy(data, temp);
-            }
-            data[strlen(data) - 1] = '\0';
+            char* data = readData(fd);
+            printf("%s", data);
         } // if data
         else if (strncmp(readBuffer, "noop", 4) == 0) {
             printf("This is noop\n");
@@ -88,25 +82,51 @@ void handle_client(int fd) {
             break;
         } // if quit
         else {
+            // TODO handle closing client connection
             printf("Command not recognized");
         }
     }
 }
 
 void readEmailAddressFromBuffer(char* emailAddress, char* readBuffer) {
-    char *emailSource;
-    emailSource = strchr(readBuffer, '<');
-    if (emailSource == NULL) {
+    char *emailHead;
+    emailHead = strchr(readBuffer, '<');
+    if (emailHead == NULL) {
         // TODO Handle these
         printf("Could not find email source");
     }
-    emailSource = emailSource + 1; // get string after <
-    char *emailSourceTail = strchr(emailSource, '>');
-    if (emailSourceTail == NULL) {
+    emailHead = emailHead + 1; // get string after <
+    char *emailTail = strchr(emailHead, '>');
+    if (emailTail == NULL) {
         // TODO handle this
         printf("Could not find email source end '>'");
     }
-    int emailSourceLength = (int) emailSourceTail - (int) emailSource;
-    memcpy(emailAddress, emailSource, (size_t) emailSourceLength);
-    emailAddress[emailSourceLength] = 0;
+    int emailLength = (int) emailTail - (int) emailHead;
+    memcpy(emailAddress, emailHead, (size_t) emailLength);
+    emailAddress[emailLength] = 0; // end with 0/NULL
+}
+
+char* readData(int fd) {
+    char readBuffer[1000] = ""; // empty buffer
+    char* data = (char *) malloc(1000);
+
+    // read until '.'
+    while (true) {
+        if (read(fd, readBuffer, 1000) > 0)
+        {
+            size_t bufferLength = strlen(readBuffer);
+
+            // bufferLength 2 because null termination
+            if (bufferLength == 2 && readBuffer[0] == '.') {
+                break;
+            }
+
+            data = (char *) realloc(data, strlen(data) + bufferLength + 1);
+            strcat(data, readBuffer);
+
+            // clear readBuffer for next line
+            memset(readBuffer, 0, sizeof readBuffer);
+        }
+    }
+    return data;
 }
