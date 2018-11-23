@@ -72,6 +72,16 @@ void handle_client(int fd) {
 
             char* data = readData(fd);
             printf("%s", data);
+
+            // saves temp file
+            // https://stackoverflow.com/questions/1022487/how-to-create-a-temporary-text-file-in-c
+            // TODO include headers
+            char fileName[] = "../fileXXXXXX";
+            int fileDescriptor = mkstemp(fileName);
+            write(fileDescriptor, data, strlen(data));
+            save_user_mail(fileName, recipients);
+            close(fileDescriptor);
+            unlink(fileName);
         } // if data
         else if (strncmp(readBuffer, "noop", 4) == 0) {
             printf("This is noop\n");
