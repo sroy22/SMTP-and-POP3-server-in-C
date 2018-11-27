@@ -67,7 +67,7 @@ int is_valid_user(const char *username, const char *password) {
   
   FILE *file_ptr = user_file_list();
   if (!file_ptr) return 0;
-  
+
   char user_file[MAX_USERNAME_SIZE+1];
   char pw_file[MAX_PASSWORD_SIZE+1];
   
