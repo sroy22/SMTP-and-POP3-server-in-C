@@ -78,47 +78,68 @@ void handle_client(int fd) {
             char temp[100];
             sprintf(temp, "%d", num);
             strcat(bufOut, temp);
-            strcat(bufOut, " messages (");
-            //sprintf(numBytes, "%zu", numBytes);
+            strcat(bufOut, " ");
+            sprintf(temp, "%zu", numBytes);
             strcat(bufOut, temp);
-            strcat(bufOut, ")\r\n");
+            strcat(bufOut, "\r\n");
             send(fd, bufOut, strlen(bufOut), 0);
         } else if (strncmp(readBuffer, "list", 4) == 0) {
             printf("list case\n");
             if (bufferLength > (ssize_t) 5) {
-                char mailNum[100];
-                strcpy(mailNum, readBuffer + 5);
-                mailNum[strlen(mailNum) - 1] = 0;
-                int mailCount;
-                mailCount = atoi(mailNum);
+                // TODO check mailIndex exists
+                char mailIndex[100];
+                strcpy(mailIndex, readBuffer + 5);
+                mailIndex[strlen(mailIndex) - 1] = 0;
+                int mailIndexInt = atoi(mailIndex);
                 struct mail_list *list = load_user_mail(name);
-                mail_item_t email = get_mail_item(list, (unsigned) mailCount);
+                int mailCount = get_mail_count(list);
+                mail_item_t email = get_mail_item(list, (unsigned) (mailCount - mailIndexInt));
                 size_t mailSize = get_mail_item_size(email);
                 printf("this is mail size %zu\n", mailSize);
             } else {
                 struct mail_list *list = load_user_mail(name);
                 int num = get_mail_count(list);
                 size_t numBytes = get_mail_list_size(list);
-                printf("size of mail %d\n", num);
-                printf("size of bytes %zu\n", numBytes);
+
                 strcpy(bufOut, "+OK ");
-                for (int i = 0; i < num; i++) {
-                    struct mail_item *email = get_mail_item(list, i);
+                char numBuffer[1000];
+                sprintf(numBuffer, "%d", num);
+                strcat(bufOut, numBuffer);
+                strcat(bufOut, " messages (");
+                sprintf(numBuffer, "%zu", numBytes);
+                strcat(bufOut, numBuffer);
+                strcat(bufOut, " octets)\r\n");
+                send_string(fd, bufOut);
+
+                for (int i = num - 1; i >= 0; i--) {
+                    memset(bufOut, 0, sizeof bufOut);
+
+                    struct mail_item *email = get_mail_item(list, (unsigned) i);
                     size_t mailSize = get_mail_item_size(email);
                     printf("this is mail size %zu\n", mailSize);
+
+                    sprintf(numBuffer, "%d", num - i);
+                    strcat(bufOut, numBuffer);
+                    strcat(bufOut, " ");
+                    sprintf(numBuffer, "%zu", mailSize);
+                    strcat(bufOut, numBuffer);
+                    strcat(bufOut, "\r\n");
+                    send_string(fd, bufOut);
                 }
+
             }
         } else if (strncmp(readBuffer, "retr", 4) == 0) {
-            char mailNum[100];
+            char mailIndex[100];
             if (bufferLength > 5) {
-                strcpy(mailNum, readBuffer + 5);
-                mailNum[strlen(mailNum) - 1] = '\0';
-                printf(mailNum);
-                char *ptr;
-                unsigned long mailCount = strtoul(mailNum, &ptr, 10);
-                printf("this is mail count %zu\n", mailCount);
-                struct mail_list *list = load_user_mail(name);
-                struct mail_item *email = get_mail_item(list, (unsigned) mailCount);
+                strcpy(mailIndex, readBuffer + 5);
+                mailIndex[strlen(mailIndex) - 1] = '\0';
+                printf(mailIndex);
+
+                int mailIndexInt = atoi(mailIndex);
+                printf("this is mail count %d\n", mailIndexInt);
+                mail_list_t list = load_user_mail(name);
+                int mailCount = get_mail_count(list);
+                mail_item_t email = get_mail_item(list, (unsigned) (mailCount - mailIndexInt));
                 if (email != NULL) {
                     const char *fileName = get_mail_item_filename(email);
                     printf("%s\n", fileName);
@@ -138,14 +159,17 @@ void handle_client(int fd) {
                 printf("Enter a mail index\n");
             }
         } else if (strncmp(readBuffer, "dele", 4) == 0) {
-            char mailNum[100];
-            strcpy(mailNum, readBuffer + 5);
-            int mailCount;
-            mailCount = atoi(mailNum);
-            printf("this is mail count %d ", mailCount);
-            struct mail_list *list = NULL;
-            list = load_user_mail("john.doe@example.com");
-            struct mail_item *email = get_mail_item(list, mailCount - 1);
+            char mailIndex[100];
+            strcpy(mailIndex, readBuffer + 5);
+            int mailIndexInt = atoi(mailIndex);
+            printf("this is mail count %d\n", mailIndexInt);
+            struct mail_list *list = load_user_mail(name);
+            int mailCount = get_mail_count(list);
+            mail_item_t email = get_mail_item(list, (unsigned) (mailCount - mailIndexInt));
+
+            const char *fileName = get_mail_item_filename(email);
+            printf("%s\n", fileName);
+
             mark_mail_item_deleted(email);
         } else if (strncmp(readBuffer, "quit", 4) == 0) {
             break;

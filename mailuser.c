@@ -250,8 +250,10 @@ unsigned int get_mail_count(mail_list_t list) {
 mail_item_t get_mail_item(mail_list_t list, unsigned int pos) {
   
   while (list) {
-    if (!pos--)
-      return list->item.deleted ? NULL : &list->item;
+    if (!pos--) {
+        printf(list->item.deleted ? "Yes\n" : "no\n");
+        return list->item.deleted ? NULL : &list->item;
+    }
     list = list->next;
   }
   
@@ -307,6 +309,7 @@ const char *get_mail_item_filename(mail_item_t item) {
  */
 void mark_mail_item_deleted(mail_item_t item) {
   item->deleted = 1;
+  printf(item->deleted ? "Yes\n" : "no\n");
 }
 
 /** Marks all deleted messages in a list as no longer deleted.
