@@ -44,7 +44,7 @@ void handle_client(int fd) {
         printf("%s\n", readBuffer);
         printf("123\n");
 
-        if (strncmp(readBuffer, "helo", 4) == 0) {
+        if (strncasecmp(readBuffer, "helo", 4) == 0) {
             if (fsmState == 0 || fsmState == 1) {
                 send_string(fd, "250 OK\r\n");
                 fsmState = 1;

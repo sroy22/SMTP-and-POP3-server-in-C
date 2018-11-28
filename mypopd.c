@@ -36,7 +36,7 @@ void handle_client(int fd) {
         char bufOut[1000] = "";
         ssize_t bufferLength = read(fd, readBuffer, 1000);
         readBuffer[bufferLength] = '\0';
-        if (strncmp(readBuffer, "user", 4) == 0) {
+        if (strncasecmp(readBuffer, "user", 4) == 0) {
             // TODO make the +5 dynamic
             strcpy(name, readBuffer + 5);
             name[strlen(name) - 1] = '\0'; // NULL termination for name
@@ -55,7 +55,7 @@ void handle_client(int fd) {
                 send(fd, bufOut, strlen(bufOut), 0);
             }
             printf("Exit\n");
-        } else if (strncmp(readBuffer, "pass", 4) == 0) {
+        } else if (strncasecmp(readBuffer, "pass", 4) == 0) {
             // TODO +5 dynamic
             strcpy(pass, readBuffer + 5);
             pass[strlen(pass) - 1] = 0;
@@ -67,7 +67,7 @@ void handle_client(int fd) {
                 printf("invalid password\n");
                 send_string(fd, "+OK maildrop locked and ready\r\n");
             }
-        } else if (strncmp(readBuffer, "stat", 4) == 0) {
+        } else if (strncasecmp(readBuffer, "stat", 4) == 0) {
             printf("Hello\n");
             struct mail_list *list = load_user_mail(name);
             int num = get_mail_count(list);
@@ -83,7 +83,7 @@ void handle_client(int fd) {
             strcat(bufOut, temp);
             strcat(bufOut, "\r\n");
             send(fd, bufOut, strlen(bufOut), 0);
-        } else if (strncmp(readBuffer, "list", 4) == 0) {
+        } else if (strncasecmp(readBuffer, "list", 4) == 0) {
             printf("list case\n");
             if (bufferLength > (ssize_t) 5) {
                 // TODO check mailIndex exists
@@ -128,7 +128,7 @@ void handle_client(int fd) {
                 }
 
             }
-        } else if (strncmp(readBuffer, "retr", 4) == 0) {
+        } else if (strncasecmp(readBuffer, "retr", 4) == 0) {
             char mailIndex[100];
             if (bufferLength > 5) {
                 strcpy(mailIndex, readBuffer + 5);
@@ -158,7 +158,7 @@ void handle_client(int fd) {
                 // TODO error
                 printf("Enter a mail index\n");
             }
-        } else if (strncmp(readBuffer, "dele", 4) == 0) {
+        } else if (strncasecmp(readBuffer, "dele", 4) == 0) { // TODO getting HANGED
             char mailIndex[100];
             strcpy(mailIndex, readBuffer + 5);
             int mailIndexInt = atoi(mailIndex);
@@ -171,9 +171,20 @@ void handle_client(int fd) {
             printf("%s\n", fileName);
 
             mark_mail_item_deleted(email);
-        } else if (strncmp(readBuffer, "quit", 4) == 0) {
+        }
+        else if (strncasecmp(readBuffer, "rset", 4) == 0) {
+            printf("This is rset case\n");
+            mail_list_t list = load_user_mail(name);
+            unsigned  int reset_Count= reset_mail_list_deleted_flag(list);
+            printf("%zu",reset_Count);
+            printf("RSET\n");
+        }
+        else if (strncasecmp(readBuffer, "quit", 4) == 0) {
             break;
-        } else {
+        }
+        else
+        {
+
         }
     }
 }
