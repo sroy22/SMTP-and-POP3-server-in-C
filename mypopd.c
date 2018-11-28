@@ -97,11 +97,33 @@ void handle_client(int fd) {
                 strcpy(mailIndex, readBuffer + 5);
                 mailIndex[strlen(mailIndex) - 1] = 0;
                 int mailIndexInt = atoi(mailIndex);
-                struct mail_list *list = load_user_mail(name);
-                int mailCount = get_mail_count(list);
-                mail_item_t email = get_mail_item(list, (unsigned) (mailCount - mailIndexInt));
-                size_t mailSize = get_mail_item_size(email);
-                printf("this is mail size %zu\n", mailSize);
+                struct mail_list *userEmails = load_user_mail(name);
+                int mailCount = get_mail_count(userEmails);
+                int reverseMailIndex = mailCount - mailIndexInt;
+                // if out of index or 0
+                if (reverseMailIndex < 0 || mailCount == reverseMailIndex) {
+                    strcpy(bufOut, "-ERR no such message, only ");
+
+                    char numBuffer[1000];
+                    sprintf(numBuffer, "%d", mailCount);
+                    strcat(bufOut, numBuffer);
+
+                    strcat(bufOut, " messages in maildrop\r\n");
+                } else {
+                    mail_item_t email = get_mail_item(userEmails, (unsigned) reverseMailIndex);
+                    size_t mailSize = get_mail_item_size(email);
+                    printf("this is mail size %zu\n", mailSize);
+
+                    char numBuffer[1000];
+                    sprintf(numBuffer, "%zu", mailSize);
+
+                    strcpy(bufOut, "+OK ");
+                    strcat(bufOut, mailIndex);
+                    strcat(bufOut, " ");
+                    strcat(bufOut, numBuffer);
+                    strcat(bufOut, "\r\n");
+                }
+                send_string(fd, bufOut);
             } else {
                 struct mail_list *list = load_user_mail(name);
                 int num = get_mail_count(list);
@@ -170,8 +192,9 @@ void handle_client(int fd) {
                     /*int c;
                     FILE *file = fopen(fileName, "r");
                     if (file) {
-                        while ((c = getc(file)) != EOF)
+                        while ((c = getc(file)) != EOF) {
                             putchar(c);
+                        }
                         fclose(file);
                     }
                      */
