@@ -32,16 +32,22 @@ void handle_client(int fd) {
     char pass[1000];
 
     while (true) {
-        char readBuffer[1000] = ""; // empty buffer
+        char readBuffer[MAX_LINE_LENGTH] = ""; // empty buffer
         char bufOut[1000] = "";
         ssize_t bufferLength = read(fd, readBuffer, 1000);
         readBuffer[bufferLength] = '\0';
+        if(strlen(readBuffer)> MAX_LINE_LENGTH) // Todo error code
+            printf("ERROR\n");
+
         if (strncasecmp(readBuffer, "user", 4) == 0) {
             // TODO make the +5 dynamic
             strcpy(name, readBuffer + 5);
             name[strlen(name) - 1] = '\0'; // NULL termination for name
-
-            if (is_valid_user(name, NULL)) {
+            if(strlen(readBuffer)<=5)
+            {
+                send_string(fd, "This command requires a parameter\r\n"); // todo exact return statement
+            }
+            else if (is_valid_user(name, NULL)) {
                 printf("This is valid user\n");
                 strcpy(bufOut, "+OK ");
                 strcat(bufOut, name);
@@ -143,13 +149,32 @@ void handle_client(int fd) {
                 if (email != NULL) {
                     const char *fileName = get_mail_item_filename(email);
                     printf("%s\n", fileName);
-                    int c;
+                    char ch;
+                    char fileBuffer[2000];
+                    int k=0;
+                    FILE *fp;
+                    fp = fopen(fileName, "r"); // read mode
+
+                    while((ch = fgetc(fp)) != EOF) {
+                        printf("%c", ch);
+                        fileBuffer[k] = ch;
+                        k++;
+                    }
+                    printf("%s\n",fileBuffer);
+                    fileBuffer[k]='\r\n';
+                    fileBuffer[k]=0;
+                    send_string(fd,fileBuffer);
+                    fclose(fp);
+
+
+                    /*int c;
                     FILE *file = fopen(fileName, "r");
                     if (file) {
                         while ((c = getc(file)) != EOF)
                             putchar(c);
                         fclose(file);
                     }
+                     */
                 } else {
                     // TODO error
                     printf("Could not find email\n");
@@ -181,6 +206,11 @@ void handle_client(int fd) {
         }
         else if (strncasecmp(readBuffer, "quit", 4) == 0) {
             break;
+        }
+        else if (strncasecmp(readBuffer, "top", 3) == 0 ||
+                 strncasecmp(readBuffer, "uidl", 4) == 0 ||
+                 strncasecmp(readBuffer, "apop", 4)==0 ) {
+            send_string(fd, "502 Unsupported command\r\n");
         }
         else
         {

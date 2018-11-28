@@ -37,10 +37,11 @@ void handle_client(int fd) {
 
     while (true) {
         printf("Hello world\n");
-        char readBuffer[1000] = ""; // empty buffer
+        char readBuffer[MAX_LINE_LENGTH] = ""; // empty buffer
         // TODO read returns number of bytes read
         read(fd, readBuffer, 1000);
-
+        if(strlen(readBuffer)> MAX_LINE_LENGTH) // Todo error code
+            printf("ERROR\n");
         printf("%s\n", readBuffer);
         printf("123\n");
 
@@ -54,7 +55,7 @@ void handle_client(int fd) {
             }
 
         } // if helo
-        else if (strncmp(readBuffer, "mail", 4) == 0) {
+        else if (strncasecmp(readBuffer, "mail", 4) == 0) {
             if (fsmState == 1) {
                 printf("This is mail\n");
                 char emailAddress[100];
@@ -69,7 +70,7 @@ void handle_client(int fd) {
                 send_string(fd, "Invalid input\r\n");
             }
         } // if mail
-        else if (strncmp(readBuffer, "rcpt", 4) == 0) {
+        else if (strncasecmp(readBuffer, "rcpt", 4) == 0) {
             if (fsmState == 2 || fsmState == 3) {
                 char emailAddress[100];
 
@@ -87,7 +88,7 @@ void handle_client(int fd) {
             }
 
         } // if rcpt
-        else if (strncmp(readBuffer, "data", 4) == 0) {
+        else if (strncasecmp(readBuffer, "data", 4) == 0) {
             if (fsmState == 3) {
                 send_string(fd, "354 Send message content; end with <CRLF>.<CRLF>\r\n");
 
@@ -109,19 +110,19 @@ void handle_client(int fd) {
             }
 
         } // if data
-        else if (strncmp(readBuffer, "noop", 4) == 0) {
+        else if (strncasecmp(readBuffer, "noop", 4) == 0) {
             printf("This is noop\n");
             send_string(fd, "250 OK\r\n");
         } // if noop
-        else if (strncmp(readBuffer, "quit", 4) == 0) {
+        else if (strncasecmp(readBuffer, "quit", 4) == 0) {
             send_string(fd, "Goodbye.\r\n");
             break;
         } // if quit
-        else if (strncmp(readBuffer, "ehlo", 4) == 0 ||
-                 strncmp(readBuffer, "rset", 4) == 0 ||
-                 strncmp(readBuffer, "vrfy", 4) == 0 ||
-                 strncmp(readBuffer, "expn", 4) == 0 ||
-                 strncmp(readBuffer, "help", 4) == 0) {
+        else if (strncasecmp(readBuffer, "ehlo", 4) == 0 ||
+                 strncasecmp(readBuffer, "rset", 4) == 0 ||
+                 strncasecmp(readBuffer, "vrfy", 4) == 0 ||
+                 strncasecmp(readBuffer, "expn", 4) == 0 ||
+                 strncasecmp(readBuffer, "help", 4) == 0) {
             send_string(fd, "502 Unsupported command\r\n");
         } // if unsupported command
         else {
