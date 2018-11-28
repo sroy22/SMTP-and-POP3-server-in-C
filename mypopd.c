@@ -63,8 +63,9 @@ void handle_client(int fd) {
             printf("Exit\n");
         } else if (strncasecmp(readBuffer, "pass", 4) == 0) {
             // TODO +5 dynamic
-            strcpy(pass, readBuffer + 5);
+            strcpy(pass, readBuffer + 5 + strlen(name)+1 );
             pass[strlen(pass) - 1] = 0;
+
 
             if (is_valid_user(name, pass)) {
                 printf("valid password\n");
