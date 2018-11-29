@@ -30,6 +30,7 @@ void handle_client(int fd) {
 
     char name[1000];
     char pass[1000];
+    struct mail_list *list;
 
     while (true) {
         char readBuffer[MAX_LINE_LENGTH] = ""; // empty buffer
@@ -52,43 +53,48 @@ void handle_client(int fd) {
                 strcpy(bufOut, "+OK ");
                 strcat(bufOut, name);
                 strcat(bufOut, " is a valid mailbox\r\n");
-                send_string(fd, "+OK\r\n");
+                send_string(fd, bufOut);
             } else {
                 printf("This is invalid user");
                 strcpy(bufOut, "-ERR never heard of mailbox ");
                 strcat(bufOut, name);
                 strcat(bufOut, "\r\n");
-                send(fd, bufOut, strlen(bufOut), 0);
+                send_string(fd, bufOut);
             }
             printf("Exit\n");
         } else if (strncasecmp(readBuffer, "pass", 4) == 0) {
             // TODO +5 dynamic
-            strcpy(pass, readBuffer + 5);
+            strcpy(pass, readBuffer + 5 + 1 + strlen(name));
             pass[strlen(pass) - 1] = 0;
 
             if (is_valid_user(name, pass)) {
                 printf("valid password\n");
                 send_string(fd, "250 OK\r\n");
+                list = load_user_mail(name);
             } else {
                 printf("invalid password\n");
                 send_string(fd, "+OK maildrop locked and ready\r\n");
             }
         } else if (strncasecmp(readBuffer, "stat", 4) == 0) {
             printf("Hello\n");
-            struct mail_list *list = load_user_mail(name);
             int num = get_mail_count(list);
-            size_t numBytes = get_mail_list_size(list);
-            printf("size of mail %d\n", num);
-            printf("size of bytes %zu\n", numBytes);
-            strcpy(bufOut, "+OK ");
-            char temp[100];
-            sprintf(temp, "%d", num);
-            strcat(bufOut, temp);
-            strcat(bufOut, " ");
-            sprintf(temp, "%zu", numBytes);
-            strcat(bufOut, temp);
-            strcat(bufOut, "\r\n");
-            send(fd, bufOut, strlen(bufOut), 0);
+            if (num == 0){
+                // TODO
+                printf("no emails");
+            } else {
+                size_t numBytes = get_mail_list_size(list);
+                printf("size of mail %d\n", num);
+                printf("size of bytes %zu\n", numBytes);
+                strcpy(bufOut, "+OK ");
+                char temp[100];
+                sprintf(temp, "%d", num);
+                strcat(bufOut, temp);
+                strcat(bufOut, " ");
+                sprintf(temp, "%zu", numBytes);
+                strcat(bufOut, temp);
+                strcat(bufOut, "\r\n");
+                send(fd, bufOut, strlen(bufOut), 0);
+            }
         } else if (strncasecmp(readBuffer, "list", 4) == 0) {
             printf("list case\n");
             if (bufferLength > (ssize_t) 5) {
@@ -97,34 +103,38 @@ void handle_client(int fd) {
                 strcpy(mailIndex, readBuffer + 5);
                 mailIndex[strlen(mailIndex) - 1] = 0;
                 int mailIndexInt = atoi(mailIndex);
-                struct mail_list *userEmails = load_user_mail(name);
-                int mailCount = get_mail_count(userEmails);
-                int reverseMailIndex = mailCount - mailIndexInt;
-                // if out of index or 0
-                if (reverseMailIndex < 0 || mailCount == reverseMailIndex) {
-                    strcpy(bufOut, "-ERR no such message, only ");
-
-                    char numBuffer[1000];
-                    sprintf(numBuffer, "%d", mailCount);
-                    strcat(bufOut, numBuffer);
-
-                    strcat(bufOut, " messages in maildrop\r\n");
+                int mailCount = get_mail_count(list);
+                if (mailCount == 0) {
+                    // TODO
                 } else {
-                    mail_item_t email = get_mail_item(userEmails, (unsigned) reverseMailIndex);
-                    size_t mailSize = get_mail_item_size(email);
-                    printf("this is mail size %zu\n", mailSize);
+                    int reverseMailIndex = mailCount - mailIndexInt;
+                    // if out of index or 0
+                    if (reverseMailIndex < 0 || mailCount == reverseMailIndex) {
+                        strcpy(bufOut, "-ERR no such message, only ");
 
-                    char numBuffer[1000];
-                    sprintf(numBuffer, "%zu", mailSize);
+                        char numBuffer[1000];
+                        sprintf(numBuffer, "%d", mailCount);
+                        strcat(bufOut, numBuffer);
 
-                    strcpy(bufOut, "+OK ");
-                    strcat(bufOut, mailIndex);
-                    strcat(bufOut, " ");
-                    strcat(bufOut, numBuffer);
-                    strcat(bufOut, "\r\n");
+                        strcat(bufOut, " messages in maildrop\r\n");
+                    } else {
+                        mail_item_t email = get_mail_item(list, (unsigned) reverseMailIndex);
+                        size_t mailSize = get_mail_item_size(email);
+                        printf("this is mail size %zu\n", mailSize);
+
+                        char numBuffer[1000];
+                        sprintf(numBuffer, "%zu", mailSize);
+
+                        strcpy(bufOut, "+OK ");
+                        strcat(bufOut, mailIndex);
+                        strcat(bufOut, " ");
+                        strcat(bufOut, numBuffer);
+                        strcat(bufOut, "\r\n");
+                    }
+                    send_string(fd, bufOut);
                 }
-                send_string(fd, bufOut);
             } else {
+                // TODO list
                 struct mail_list *list = load_user_mail(name);
                 int num = get_mail_count(list);
                 size_t numBytes = get_mail_list_size(list);
@@ -165,7 +175,7 @@ void handle_client(int fd) {
 
                 int mailIndexInt = atoi(mailIndex);
                 printf("this is mail count %d\n", mailIndexInt);
-                mail_list_t list = load_user_mail(name);
+                // TODO mailcount == 0
                 int mailCount = get_mail_count(list);
                 mail_item_t email = get_mail_item(list, (unsigned) (mailCount - mailIndexInt));
                 if (email != NULL) {
@@ -211,7 +221,8 @@ void handle_client(int fd) {
             strcpy(mailIndex, readBuffer + 5);
             int mailIndexInt = atoi(mailIndex);
             printf("this is mail count %d\n", mailIndexInt);
-            struct mail_list *list = load_user_mail(name);
+            // TODO mailCount == 0
+            // TODO -ERR already deleted
             int mailCount = get_mail_count(list);
             mail_item_t email = get_mail_item(list, (unsigned) (mailCount - mailIndexInt));
 
@@ -222,13 +233,17 @@ void handle_client(int fd) {
         }
         else if (strncasecmp(readBuffer, "rset", 4) == 0) {
             printf("This is rset case\n");
-            mail_list_t list = load_user_mail(name);
+            // TODO mailCount == 0 RFC
             unsigned  int reset_Count= reset_mail_list_deleted_flag(list);
-            printf("%zu",reset_Count);
+            printf("%u",reset_Count);
             printf("RSET\n");
         }
         else if (strncasecmp(readBuffer, "quit", 4) == 0) {
             break;
+        }
+        else if (strncasecmp(readBuffer, "noop", 4) == 0) {
+            // TODO FSM
+            send_string(fd, "YEET\r\n");
         }
         else if (strncasecmp(readBuffer, "top", 3) == 0 ||
                  strncasecmp(readBuffer, "uidl", 4) == 0 ||
