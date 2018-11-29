@@ -14,10 +14,6 @@
 
 static void handle_client(int fd);
 
-// 0 : wait for valid USER
-// 1 : wait for valid PASS
-// 2 :
-// 3 :
 int fsmState = -1;
 
 char name[1000];
