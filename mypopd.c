@@ -14,6 +14,20 @@
 
 static void handle_client(int fd);
 
+// 0 : wait for valid USER
+// 1 : wait for valid PASS
+// 2 :
+// 3 :
+int fsmState = -1;
+
+char name[1000];
+char pass[1000];
+
+struct mail_list *list;
+int mailCount = -1;
+
+bool isMaildropLocked = false;
+
 int main(int argc, char *argv[]) {
 
     if (argc != 2) {
@@ -27,121 +41,168 @@ int main(int argc, char *argv[]) {
 }
 
 void handleStat(struct mail_list* list, int fd) {
-    int currentMailCount = get_mail_count(list);
-    size_t numListBytes = get_mail_list_size(list);
+    if (fsmState == 2) {
+        int currentMailCount = get_mail_count(list);
+        size_t numListBytes = get_mail_list_size(list);
 
-    send_string(fd, "+OK %d %zu\r\n", currentMailCount, numListBytes);
+        send_string(fd, "+OK %d %zu\r\n", currentMailCount, numListBytes);
+    } else {
+        send_string(fd, "-ERR Invalid command\r\n");
+    }
 }
 
 void handleList(int mailCount, struct mail_list* list, int fd) {
-    size_t numListBytes = get_mail_list_size(list);
-    // use a separate mail count to be able to loop through all mail items even when deleted
-    int currentMailCount = get_mail_count(list);
+    if (fsmState == 2) {
+        size_t numListBytes = get_mail_list_size(list);
+        // use a separate mail count to be able to loop through all mail items even when deleted
+        int currentMailCount = get_mail_count(list);
 
-    send_string(fd, "+OK %d messages (%zu octets)\r\n", currentMailCount, numListBytes);
+        send_string(fd, "+OK %d messages (%zu octets)\r\n", currentMailCount, numListBytes);
 
-    // iterate backwards because list is stored like a stack
-    for (int i = mailCount - 1; i >= 0; i--) {
-        struct mail_item *email = get_mail_item(list, (unsigned) i);
-        if  (email != NULL) {
-            size_t mailSize = get_mail_item_size(email);
+        // iterate backwards because list is stored like a stack
+        for (int i = mailCount - 1; i >= 0; i--) {
+            struct mail_item *email = get_mail_item(list, (unsigned) i);
+            if  (email != NULL) {
+                size_t mailSize = get_mail_item_size(email);
 
-            // return correct index from the front (starting from 1)
-            send_string(fd, "%d %zu\r\n", mailCount - i, mailSize);
+                // return correct index from the front (starting from 1)
+                send_string(fd, "%d %zu\r\n", mailCount - i, mailSize);
+            }
         }
+        send_string(fd, ".\r\n");
+    } else {
+        send_string(fd, "-ERR Invalid command\r\n");
     }
+
 }
 
 void handleListWithVars(char readBuffer[], int mailCount, struct mail_list* list, int fd) {
-    char mailIndex[100];
-    strcpy(mailIndex, readBuffer + 5);
-    mailIndex[strlen(mailIndex) - 1] = '\0';
-    int mailIndexInt = atoi(mailIndex);
+    if (fsmState == 2) {
+        char mailIndex[100];
+        strcpy(mailIndex, readBuffer + 5);
+        mailIndex[strlen(mailIndex) - 1] = '\0';
+        int mailIndexInt = atoi(mailIndex);
 
-    int reverseMailIndex = mailCount - mailIndexInt;
-    // if out of index or 0
-    if (reverseMailIndex < 0 || mailCount == reverseMailIndex) {
-        send_string(fd, "-ERR no such message, only %d messages in maildrop\r\n", mailCount);
-    } else {
-        mail_item_t email = get_mail_item(list, (unsigned) reverseMailIndex);
-        if (email == NULL) {
-            send_string(fd, "-ERR item has been deleted\r\n");
+        int reverseMailIndex = mailCount - mailIndexInt;
+        // if out of index or 0
+        if (reverseMailIndex < 0 || mailCount == reverseMailIndex) {
+            send_string(fd, "-ERR no such message, only %d messages in maildrop\r\n", mailCount);
         } else {
-            size_t mailSize = get_mail_item_size(email);
-            send_string(fd, "+OK %s %zu\r\n", mailIndex, mailSize);
+            mail_item_t email = get_mail_item(list, (unsigned) reverseMailIndex);
+            if (email == NULL) {
+                send_string(fd, "-ERR item has been deleted\r\n");
+            } else {
+                size_t mailSize = get_mail_item_size(email);
+                send_string(fd, "+OK %s %zu\r\n", mailIndex, mailSize);
+            }
         }
+    } else {
+        send_string(fd, "-ERR Invalid command\r\n");
     }
+
 }
 
 void handleUser(char *name, char readBuffer[], int fd) {
-    strcpy(name, readBuffer + 5);
-    name[strlen(name) - 1] = '\0'; // NULL termination for name
-    if (is_valid_user(name, NULL)) {
-        send_string(fd, "+OK %s is a valid mailbox\r\n", name);
+    // After initialization, or failed USER / PASS command (State 0)
+    if (fsmState == 0) {
+        strcpy(name, readBuffer + 5);
+        name[strlen(name) - 1] = '\0'; // NULL termination for name
+        if (is_valid_user(name, NULL)) {
+            send_string(fd, "+OK %s is a valid mailbox\r\n", name);
+            fsmState = 1;
+        } else {
+            send_string(fd, "-ERR never heard of mailbox %s\r\n", name);
+        }
     } else {
-        send_string(fd, "-ERR never heard of mailbox %s\r\n", name);
+        send_string(fd, "-ERR not in AUTHORIZATION state");
+    }
+}
+
+void handlePass(char *pass, char readBuffer[], int fd) {
+    if (fsmState != 1) {
+        send_string(fd, "-ERR unable to lock maildrop\r\n");
+    } else {
+        strcpy(pass, readBuffer + 5);
+        pass[strlen(pass) - 1] = '\0';
+
+        if (isMaildropLocked) {
+            send_string(fd, "-ERR maildrop already locked\r\n");
+        } else if (is_valid_user(name, pass)) {
+            list = load_user_mail(name);
+            mailCount = get_mail_count(list);
+            isMaildropLocked = true;
+            fsmState = 2;
+            send_string(fd, "+OK maildrop locked and ready\r\n");
+        } else {
+            send_string(fd, "-ERR invalid password\r\n");
+            fsmState = 0;
+        }
     }
 }
 
 void handleRetr(char readBuffer[], int mailCount, struct mail_list* list, int fd) {
-    char mailIndex[100];
-    strcpy(mailIndex, readBuffer + 5);
-    mailIndex[strlen(mailIndex) - 1] = '\0';
-    int mailIndexInt = atoi(mailIndex);
-    mail_item_t email = get_mail_item(list, (unsigned) (mailCount - mailIndexInt));
+    if (fsmState == 2) {
+        char mailIndex[100];
+        strcpy(mailIndex, readBuffer + 5);
+        mailIndex[strlen(mailIndex) - 1] = '\0';
+        int mailIndexInt = atoi(mailIndex);
+        mail_item_t email = get_mail_item(list, (unsigned) (mailCount - mailIndexInt));
 
-    if (email != NULL) {
-        const char *fileName = get_mail_item_filename(email);
+        if (email != NULL) {
+            const char *fileName = get_mail_item_filename(email);
 
-        char ch;
-        int k=0;
-        char fileBuffer[2000];
-        FILE *fp = fopen(fileName, "r"); // read mode
-        while((ch = fgetc(fp)) != EOF) {
-            printf("%c", ch);
-            fileBuffer[k] = ch;
-            k++;
+            char ch;
+            int k=0;
+            char fileBuffer[2000];
+            FILE *fp = fopen(fileName, "r"); // read mode
+            while((ch = fgetc(fp)) != EOF) {
+                printf("%c", ch);
+                fileBuffer[k] = ch;
+                k++;
+            }
+            fclose(fp);
+
+            fileBuffer[k]= '\r\n';
+            fileBuffer[k+1]=0;
+            send_string(fd, fileBuffer);
+            send_string(fd, ".\r\n");
+        } else {
+            send_string(fd, "-ERR Could not find email\r\n");
         }
-        fclose(fp);
-
-        fileBuffer[k]= '\r\n';
-        fileBuffer[k+1]=0;
-        send_string(fd, fileBuffer);
     } else {
-        send_string(fd, "-ERR Could not find email\r\n");
+        send_string(fd, "-ERR Invalid command\r\n");
     }
+
 }
 
 void handleDele(char readBuffer[], int mailCount, struct mail_list* list, int fd) {
-    char mailIndex[100];
-    strcpy(mailIndex, readBuffer + 5);
-    mailIndex[strlen(mailIndex) - 1] = '\0';
-    int mailIndexInt = atoi(mailIndex);
-    int reverseMailIndex = mailCount - mailIndexInt;
-    // if out of index or 0
-    if (reverseMailIndex < 0 || mailCount == reverseMailIndex) {
-        send_string(fd, "-ERR index out of bounds, only %d messages in maildrop\r\n", mailCount);
-    } else {
-        mail_item_t email = get_mail_item(list, (unsigned) reverseMailIndex);
-        if (email == NULL) {
-            send_string(fd, "-ERR item has already been deleted\r\n");
+    if (fsmState == 2) {
+        char mailIndex[100];
+        strcpy(mailIndex, readBuffer + 5);
+        mailIndex[strlen(mailIndex) - 1] = '\0';
+        int mailIndexInt = atoi(mailIndex);
+        int reverseMailIndex = mailCount - mailIndexInt;
+        // if out of index or 0
+        if (reverseMailIndex < 0 || mailCount == reverseMailIndex) {
+            send_string(fd, "-ERR index out of bounds, only %d messages in maildrop\r\n", mailCount);
         } else {
-            mark_mail_item_deleted(email);
-            send_string(fd, "+OK message %s deleted\r\n", mailIndex);
+            mail_item_t email = get_mail_item(list, (unsigned) reverseMailIndex);
+            if (email == NULL) {
+                send_string(fd, "-ERR item has already been deleted\r\n");
+            } else {
+                mark_mail_item_deleted(email);
+                send_string(fd, "+OK message %s deleted\r\n", mailIndex);
+            }
         }
+    } else {
+        send_string(fd, "-ERR Invalid command");
     }
 }
 
 void handle_client(int fd) {
-    char name[1000];
-    char pass[1000];
-
-    struct mail_list *list;
-    int mailCount = -1;
-
-    bool isMaildropLocked = false;
-
     send_string(fd, "+OK POP3 server ready\r\n");
+
+    fsmState = 0;
 
     while (true) {
         char readBuffer[MAX_LINE_LENGTH] = ""; // empty buffer
@@ -162,18 +223,27 @@ void handle_client(int fd) {
             } else if (strncasecmp(readBuffer, "list", 4) == 0) {
                 handleList(mailCount, list, fd);
             } else if (strncasecmp(readBuffer, "rset", 4) == 0) {
-                // TODO mailCount == 0 RFC
-                reset_mail_list_deleted_flag(list);
-                size_t listSize = get_mail_list_size(list);
-                send_string(fd, "+OK maildrop has %d messages (%zu octets)\r\n", mailCount, listSize);
+                if (fsmState == 2) {
+                    reset_mail_list_deleted_flag(list);
+                    size_t listSize = get_mail_list_size(list);
+                    send_string(fd, "+OK maildrop has %d messages (%zu octets)\r\n", mailCount, listSize);
+                } else {
+                    send_string(fd, "-ERR Invalid command\r\n");
+                }
+
             } else if (strncasecmp(readBuffer, "quit", 4) == 0) {
-                // TODO if from transaction state, remove messages
+                if (fsmState == 2) {
+                    destroy_mail_list(list);
+                }
                 send_string(fd, "+OK Goodbye\r\n");
                 break;
             }
             else if (strncasecmp(readBuffer, "noop", 4) == 0) {
-                // TODO FSM only in transaction state
-                send_string(fd, "+OK\r\n");
+                if (fsmState == 2) {
+                    send_string(fd, "+OK\r\n");
+                } else {
+                    send_string(fd, "-ERR Invalid command\r\n");
+                }
             } else {
                 send_string(fd, "-ERR Invalid command\r\n");
             }
@@ -182,24 +252,12 @@ void handle_client(int fd) {
             if (strncasecmp(readBuffer, "user ", 5) == 0) {
                 handleUser(name, readBuffer, fd);
             } else if (strncasecmp(readBuffer, "pass ", 5) == 0) {
-                strcpy(pass, readBuffer + 5);
-                pass[strlen(pass) - 1] = '\0';
-
-                if (isMaildropLocked) {
-                    send_string(fd, "-ERR maildrop already locked\r\n");
-                } else if (is_valid_user(name, pass)) {
-                    list = load_user_mail(name);
-                    mailCount = get_mail_count(list);
-                    isMaildropLocked = true;
-                    send_string(fd, "+OK maildrop locked and ready\r\n");
-                } else {
-                    send_string(fd, "-ERR invalid password\r\n");
-                }
+                handlePass(pass, readBuffer, fd);
             } else if (strncasecmp(readBuffer, "list ", 5) == 0) {
                 handleListWithVars(readBuffer, mailCount, list, fd);
             } else if (strncasecmp(readBuffer, "retr ", 5) == 0) {
                 handleRetr(readBuffer, mailCount, list, fd);
-            } else if (strncasecmp(readBuffer, "dele ", 5) == 0) { // TODO getting HANGED
+            } else if (strncasecmp(readBuffer, "dele ", 5) == 0) {
                 handleDele(readBuffer, mailCount, list, fd);
             } else {
                 send_string(fd, "-ERR Invalid command\r\n");
