@@ -41,25 +41,33 @@ void handle_client(int fd) {
 
     fsmState = 0;
 
+    net_buffer_t nb = nb_create(fd, MAX_LINE_LENGTH);
+
     while (true) {
         char readBuffer[MAX_LINE_LENGTH] = ""; // empty buffer
-        // TODO ask if 1000 is right? or should it be MAX_LINE_LENGTH
-        ssize_t bytesRead = read(fd, readBuffer, 1000);
+        int bytesRead = nb_read_line(nb, readBuffer);
+
+        // if connection close 0; if terminated -1
+        if (bytesRead <= 0) {
+            break;
+        }
+
         size_t bufferLength = strlen(readBuffer);
-        readBuffer[bufferLength - 1] = '\0';
         if(bufferLength <= MAX_LINE_LENGTH) {
-            if ((strncasecmp(readBuffer, "helo", 4) == 0 && bufferLength == 5) ||
-                 strncasecmp(readBuffer, "helo ", 5) == 0) {
+            if (strncasecmp(readBuffer, "helo ", 5) == 0 && bufferLength > 7) {
+                // TODO check there's argument
                 if (fsmState == 0 || fsmState == 1) {
-                    send_string(fd, "250 %s\r\n", unameData.__domainname);
-                    fsmState = 1;
+                    if (readBuffer[5] != ' ') {
+                        send_string(fd, "250 %s\r\n", unameData.__domainname);
+                        fsmState = 1;
+                    } else {
+                        send_string(fd, "500 Invalid command\r\n");
+                    }
                 } else {
-                    // TODO do we need a switch for the error statement? Need a status code
                     send_string(fd, "503 Bad sequence of commands\r\n");
                 }
-
-            } // if helo
-            else if (strncasecmp(readBuffer, "mail from:", 10) == 0 && bufferLength > 10) {
+            }
+            else if (strncasecmp(readBuffer, "mail from:", 10) == 0 && bufferLength > 12) {
                 if (fsmState == 1) {
                     char emailAddress[100] = "";
 
@@ -74,8 +82,8 @@ void handle_client(int fd) {
                 } else {
                     send_string(fd, "503 Bad sequence of commands\r\n");
                 }
-            } // if mail
-            else if (strncasecmp(readBuffer, "rcpt to:", 8) == 0 && bufferLength > 8) {
+            }
+            else if (strncasecmp(readBuffer, "rcpt to:", 8) == 0 && bufferLength > 10) {
                 if (fsmState == 2 || fsmState == 3) {
                     char emailAddress[100] = "";
 
@@ -87,15 +95,14 @@ void handle_client(int fd) {
                         send_string(fd, "250 OK\r\n");
                         fsmState = 3;
                     } else {
-                        // TODO ask for error code for this one
-                        send_string(fd, "553 Mailbox name not allowed; recipient not in users.txt\r\n");
+                        send_string(fd, "550 recipient not in users.txt\r\n");
                     };
                 } else {
                     send_string(fd, "503 Bad sequence of commands\r\n");
                 }
 
-            } // if rcpt
-            else if (strncasecmp(readBuffer, "data", 4) == 0) {
+            }
+            else if (strncasecmp(readBuffer, "data\r\n", 6) == 0 && bufferLength == 6) {
                 if (fsmState == 3) {
                     send_string(fd, "354 Send message content; end with <CRLF>.<CRLF>\r\n");
 
@@ -118,33 +125,28 @@ void handle_client(int fd) {
                     send_string(fd, "503 Bad sequence of commands\r\n");
                 }
 
-            } // if data
-            else if (strncasecmp(readBuffer, "noop", 4) == 0) {
+            }
+            else if (strncasecmp(readBuffer, "noop\r\n", 6) == 0 && bufferLength == 6) {
                 send_string(fd, "250 OK\r\n");
-            } // if noop
-            else if (strncasecmp(readBuffer, "quit", 4) == 0) {
+            }
+            else if (strncasecmp(readBuffer, "quit\r\n", 6) == 0 && bufferLength == 6) {
                 send_string(fd, "221 Goodbye.\r\n");
                 destroy_user_list(recipients);
                 break;
-            } // if quit
-            else if (strncasecmp(readBuffer, "ehlo", 4) == 0 ||
-                     strncasecmp(readBuffer, "rset", 4) == 0 ||
-                     strncasecmp(readBuffer, "vrfy", 4) == 0 ||
-                     strncasecmp(readBuffer, "expn", 4) == 0 ||
-                     strncasecmp(readBuffer, "help", 4) == 0) {
+            }
+            else if ((strncasecmp(readBuffer, "ehlo\r\n", 6) == 0 ||
+                      strncasecmp(readBuffer, "rset\r\n", 6) == 0 ||
+                      strncasecmp(readBuffer, "vrfy\r\n", 6) == 0 ||
+                      strncasecmp(readBuffer, "expn\r\n", 6) == 0 ||
+                      strncasecmp(readBuffer, "help\r\n", 6) == 0) &&
+                     bufferLength == 6) {
                 send_string(fd, "502 Unsupported command\r\n");
-            } // if unsupported command
-            else if (bytesRead <= 0) {
-                // TODO how to close connection?
-                // Properly closes connection if read (or nb_read_line) returns <= 0
             } else {
                 send_string(fd, "500 Invalid command\r\n");
             }
         } else {
             send_string(fd, "500 Line too long\r\n");
         }
-        // TODO Properly terminates message with line containing only period
-        // make a wrapper for this and just break if it fails?
     }
 }
 
@@ -163,16 +165,16 @@ void readEmailAddressFromBuffer(char* emailAddress, char* readBuffer) {
 }
 
 char* readData(int fd) {
-    char readBuffer[1000] = ""; // empty buffer
-    char* data = (char *) malloc(1000);
+    char readBuffer[MAX_LINE_LENGTH] = ""; // empty buffer
+    char* data = (char *) malloc(MAX_LINE_LENGTH);
 
+    net_buffer_t dataNB = nb_create(fd, MAX_LINE_LENGTH);
     while (true) {
-        if (read(fd, readBuffer, 1000) > 0) {
+        if (nb_read_line(dataNB, readBuffer) > 0) {
             size_t bufferLength = strlen(readBuffer);
 
             // read until '.'
-            // bufferLength 2 because null termination
-            if (bufferLength == 2 && readBuffer[0] == '.') {
+            if (strncasecmp(readBuffer, ".\r\n", 3) == 0 && bufferLength == 3) {
                 break;
             }
 

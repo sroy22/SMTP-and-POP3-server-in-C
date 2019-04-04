@@ -75,11 +75,12 @@ void handleList(int mailCount, struct mail_list* list, int fd) {
 void handleListWithVars(char readBuffer[], int mailCount, struct mail_list* list, int fd) {
     if (fsmState == 2) {
         char mailIndex[100];
-        strcpy(mailIndex, readBuffer + 5);
-        mailIndex[strlen(mailIndex) - 1] = '\0';
-        int mailIndexInt = atoi(mailIndex);
+        strncpy(mailIndex, readBuffer + 5, strlen(readBuffer) - 5 - 2);
 
-        int reverseMailIndex = mailCount - mailIndexInt;
+        char *ptr; // string part of the readBuffer;
+        long mailIndexLong = strtol(mailIndex, &ptr, 10);
+        int reverseMailIndex = mailCount - (int) mailIndexLong;
+
         // if out of index or 0
         if (reverseMailIndex < 0 || mailCount == reverseMailIndex) {
             send_string(fd, "-ERR no such message, only %d messages in maildrop\r\n", mailCount);
@@ -89,7 +90,7 @@ void handleListWithVars(char readBuffer[], int mailCount, struct mail_list* list
                 send_string(fd, "-ERR item has been deleted\r\n");
             } else {
                 size_t mailSize = get_mail_item_size(email);
-                send_string(fd, "+OK %s %zu\r\n", mailIndex, mailSize);
+                send_string(fd, "+OK %ld %zu\r\n", mailIndexLong, mailSize);
             }
         }
     } else {
@@ -101,8 +102,8 @@ void handleListWithVars(char readBuffer[], int mailCount, struct mail_list* list
 void handleUser(char *name, char readBuffer[], int fd) {
     // After initialization, or failed USER / PASS command (State 0)
     if (fsmState == 0) {
-        strcpy(name, readBuffer + 5);
-        name[strlen(name) - 1] = '\0'; // NULL termination for name
+        strncpy(name, readBuffer + 5, strlen(readBuffer) - 5 - 2);
+        printf("[%s]\n", name);
         if (is_valid_user(name, NULL)) {
             send_string(fd, "+OK %s is a valid mailbox\r\n", name);
             fsmState = 1;
@@ -118,8 +119,7 @@ void handlePass(char *pass, char readBuffer[], int fd) {
     if (fsmState != 1) {
         send_string(fd, "-ERR unable to lock maildrop\r\n");
     } else {
-        strcpy(pass, readBuffer + 5);
-        pass[strlen(pass) - 1] = '\0';
+        strncpy(pass, readBuffer + 5, strlen(readBuffer) - 5 - 2);
 
         if (isMaildropLocked) {
             send_string(fd, "-ERR maildrop already locked\r\n");
@@ -139,10 +139,11 @@ void handlePass(char *pass, char readBuffer[], int fd) {
 void handleRetr(char readBuffer[], int mailCount, struct mail_list* list, int fd) {
     if (fsmState == 2) {
         char mailIndex[100];
-        strcpy(mailIndex, readBuffer + 5);
-        mailIndex[strlen(mailIndex) - 1] = '\0';
-        int mailIndexInt = atoi(mailIndex);
-        mail_item_t email = get_mail_item(list, (unsigned) (mailCount - mailIndexInt));
+        strncpy(mailIndex, readBuffer + 5, strlen(readBuffer) - 5 - 2);
+        char *ptr; // string part of the readBuffer;
+        long mailIndexLong = strtol(mailIndex, &ptr, 10);
+
+        mail_item_t email = get_mail_item(list, (unsigned) (mailCount - (int)mailIndexLong));
 
         if (email != NULL) {
             const char *fileName = get_mail_item_filename(email);
@@ -158,8 +159,6 @@ void handleRetr(char readBuffer[], int mailCount, struct mail_list* list, int fd
             }
             fclose(fp);
 
-            fileBuffer[k]= '\r\n';
-            fileBuffer[k+1]=0;
             send_string(fd, fileBuffer);
             send_string(fd, ".\r\n");
         } else {
@@ -174,10 +173,10 @@ void handleRetr(char readBuffer[], int mailCount, struct mail_list* list, int fd
 void handleDele(char readBuffer[], int mailCount, struct mail_list* list, int fd) {
     if (fsmState == 2) {
         char mailIndex[100];
-        strcpy(mailIndex, readBuffer + 5);
-        mailIndex[strlen(mailIndex) - 1] = '\0';
-        int mailIndexInt = atoi(mailIndex);
-        int reverseMailIndex = mailCount - mailIndexInt;
+        strncpy(mailIndex, readBuffer + 5, strlen(readBuffer) - 5 - 2);
+        char *ptr; // string part of the readBuffer;
+        long mailIndexLong = strtol(mailIndex, &ptr, 10);
+        int reverseMailIndex = mailCount - (int) mailIndexLong;
         // if out of index or 0
         if (reverseMailIndex < 0 || mailCount == reverseMailIndex) {
             send_string(fd, "-ERR index out of bounds, only %d messages in maildrop\r\n", mailCount);
@@ -187,7 +186,7 @@ void handleDele(char readBuffer[], int mailCount, struct mail_list* list, int fd
                 send_string(fd, "-ERR item has already been deleted\r\n");
             } else {
                 mark_mail_item_deleted(email);
-                send_string(fd, "+OK message %s deleted\r\n", mailIndex);
+                send_string(fd, "+OK message %ld deleted\r\n", mailIndexLong);
             }
         }
     } else {
@@ -200,20 +199,22 @@ void handle_client(int fd) {
 
     fsmState = 0;
 
+    net_buffer_t nb = nb_create(fd, MAX_LINE_LENGTH);
+
     while (true) {
         char readBuffer[MAX_LINE_LENGTH] = ""; // empty buffer
-        ssize_t bufferLength = read(fd, readBuffer, 1000);
-        readBuffer[bufferLength] = '\0';
+        nb_read_line(nb, readBuffer);
+        size_t bufferLength = strlen(readBuffer);
 
         if(bufferLength > MAX_LINE_LENGTH) {
             send_string(fd, "-ERR Maximum line exceeded\r\n");
         }
 
-        if (strncasecmp(readBuffer, "top", 3) == 0 ||
-            strncasecmp(readBuffer, "uidl", 4) == 0 ||
-            strncasecmp(readBuffer, "apop", 4)==0 ) {
+        if ((strncasecmp(readBuffer, "top", 3) == 0 && bufferLength == 5) ||
+            ((strncasecmp(readBuffer, "uidl", 4) == 0 ||
+              strncasecmp(readBuffer, "apop", 4) == 0) && bufferLength == 6)) {
             send_string(fd, "-ERR Unsupported command\r\n");
-        } else if (bufferLength <= 5) {
+        } else if (bufferLength == 6) {
             if (strncasecmp(readBuffer, "stat", 4) == 0) {
                 handleStat(list, fd);
             } else if (strncasecmp(readBuffer, "list", 4) == 0) {
@@ -243,13 +244,14 @@ void handle_client(int fd) {
             } else {
                 send_string(fd, "-ERR Invalid command\r\n");
             }
-        } else {
-            // xxxx_ because user input must have > 5 length and must have a space, otherwise needs param
+        } else if (bufferLength > 7 && readBuffer[5] != ' '){
+            // xxxx_ because user input must have > 7 length and must have a space, otherwise needs param
             if (strncasecmp(readBuffer, "user ", 5) == 0) {
                 handleUser(name, readBuffer, fd);
             } else if (strncasecmp(readBuffer, "pass ", 5) == 0) {
                 handlePass(pass, readBuffer, fd);
             } else if (strncasecmp(readBuffer, "list ", 5) == 0) {
+                // TODO check argument exists
                 handleListWithVars(readBuffer, mailCount, list, fd);
             } else if (strncasecmp(readBuffer, "retr ", 5) == 0) {
                 handleRetr(readBuffer, mailCount, list, fd);
@@ -258,6 +260,8 @@ void handle_client(int fd) {
             } else {
                 send_string(fd, "-ERR Invalid command\r\n");
             }
+        } else {
+            send_string(fd, "-ERR Invalid command\r\n");
         }
     }
 }
