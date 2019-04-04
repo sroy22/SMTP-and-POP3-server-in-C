@@ -156,13 +156,13 @@ void run_server(const char *port, void (*handler)(int)) {
     
     // Create a new process to handle the new client; parent process
     // will wait for another client.
-    if (!fork()) {
+    //if (!fork()) {
       // this is the child process
-      close(sockfd); // child doesn't need the listener
+      //close(sockfd); // child doesn't need the listener
       handler(new_fd);
       close(new_fd);
       exit(0);
-    }
+    //}
     
     // Parent proceeds from here. In parent, client socket is not needed.
     close(new_fd);
